@@ -4,6 +4,7 @@
 
 #import <objc/message.h>
 #import <CoreLocation/CLLocationManagerDelegate.h>
+#import <ExpoModulesCore/EXUtilities.h>
 
 static SEL alwaysAuthorizationSelector;
 
@@ -42,6 +43,9 @@ static SEL alwaysAuthorizationSelector;
     CLAuthorizationStatus status = [self.locationManager authorizationStatus];
     
     if (status == kCLAuthorizationStatusAuthorizedWhenInUse) {
+      if ([self deferUntilAppIsActive]) {
+        return;
+      }
       // We already have a foreground permission granted:
       // When asking for background location, we might or might not have asked for foreground permission
       // before we get here. An issue here is if the user has a temporary permission ("Allow once") - which
@@ -68,6 +72,27 @@ static SEL alwaysAuthorizationSelector;
     self.resolve = nil;
     self.reject = nil;
   }
+}
+
+- (BOOL)deferUntilAppIsActive
+{
+  __block BOOL deferred = NO;
+  [EXUtilities performSynchronouslyOnMainThread:^{
+    if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive) {
+      [[NSNotificationCenter defaultCenter] addObserver:self
+                                               selector:@selector(handleAppBecomingActiveBeforeRequest)
+                                                   name:UIApplicationDidBecomeActiveNotification
+                                                 object:nil];
+      deferred = YES;
+    }
+  }];
+  return deferred;
+}
+
+- (void)handleAppBecomingActiveBeforeRequest
+{
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [self requestLocationPermissions];
 }
 
 - (void)handleAppBecomingActive
